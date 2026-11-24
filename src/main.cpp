@@ -233,8 +233,8 @@ public:
     void open() {
         const char* xdg = std::getenv("XDG_RUNTIME_DIR");
         path_ = (xdg && xdg[0] != '\0')
-            ? (std::string(xdg) + "/modern-xmb-wind.sock")
-            : "/tmp/modern-xmb-wind.sock";
+            ? (std::string(xdg) + "/modern-moyou-wind.sock")
+            : "/tmp/modern-moyou-wind.sock";
         fd_ = ::socket(AF_UNIX, SOCK_DGRAM | SOCK_NONBLOCK | SOCK_CLOEXEC, 0);
         if (fd_ < 0) return;
         ::unlink(path_.c_str());
@@ -405,23 +405,28 @@ int main(int argc, char** argv) {
     namespace fs = std::filesystem;
     std::string err;
 
-    // Auto-discover ~/.local/share/modern-xmb/ if no .qrc path was specified; fall back to built-in procedural theme.
+    // Auto-discover ~/.local/share/modern-moyou/ (or legacy modern-xmb/) if no .qrc path was specified;
+    // fall back to built-in procedural theme.
     std::vector<std::string> playlist;
     if (qrc_path.empty()) {
-        std::string data_dir;
+        std::string data_root;
         if (const char* xdg = std::getenv("XDG_DATA_HOME"); xdg && xdg[0] != '\0') {
-            data_dir = std::string(xdg) + "/modern-xmb";
+            data_root = std::string(xdg);
         } else if (const char* home = std::getenv("HOME"); home && home[0] != '\0') {
-            data_dir = std::string(home) + "/.local/share/modern-xmb";
+            data_root = std::string(home) + "/.local/share";
         }
-        if (!data_dir.empty()) {
-            std::error_code ec;
-            if (fs::is_directory(data_dir, ec)) {
-                for (const auto& e : fs::recursive_directory_iterator(data_dir, ec)) {
-                    if (e.is_regular_file() && e.path().extension() == ".qrc") {
-                        playlist.push_back(e.path().string());
+        if (!data_root.empty()) {
+            for (const char* sub : {"/modern-moyou", "/modern-xmb"}) {
+                const std::string data_dir = data_root + sub;
+                std::error_code ec;
+                if (fs::is_directory(data_dir, ec)) {
+                    for (const auto& e : fs::recursive_directory_iterator(data_dir, ec)) {
+                        if (e.is_regular_file() && e.path().extension() == ".qrc") {
+                            playlist.push_back(e.path().string());
+                        }
                     }
                 }
+                if (!playlist.empty()) break;
             }
         }
         std::sort(playlist.begin(), playlist.end());
@@ -739,7 +744,7 @@ int main(int argc, char** argv) {
         std::cerr << "SDL_Init failed: " << SDL_GetError() << "\n";
         return 1;
     }
-    SDL_Window* window = SDL_CreateWindow("Modern-XMB", 1280, 720, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
+    SDL_Window* window = SDL_CreateWindow("modern-moyou", 1280, 720, SDL_WINDOW_VULKAN | SDL_WINDOW_RESIZABLE);
     if (!window) {
         std::cerr << "SDL_CreateWindow failed: " << SDL_GetError() << "\n";
         SDL_Quit();
@@ -1004,7 +1009,7 @@ int main(int argc, char** argv) {
         }
         if (title_dirty) {
             char t[512];
-            std::snprintf(t, sizeof(t), "Modern-XMB [%zu/%zu] %s | %s | month %d | time %04d%s%s%s",
+            std::snprintf(t, sizeof(t), "modern-moyou [%zu/%zu] %s | %s | month %d | time %04d%s%s%s",
                           cur + 1, playlist.size(), fs::path(playlist[cur]).filename().string().c_str(),
                           current_override_label(),
                           month, static_cast<int>(day_time),

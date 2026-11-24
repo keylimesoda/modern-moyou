@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.24)
-project(ModernXMB VERSION 0.1.0 LANGUAGES C CXX)
+project(modern-moyou VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -153,7 +153,7 @@ if(Vulkan_FOUND)
         PUBLIC VK_USE_PLATFORM_WAYLAND_KHR=1
         PRIVATE
             XMB_SHADER_DIR="${SHADER_OUT_DIR}"
-            XMB_INSTALL_SHADER_DIR="${CMAKE_INSTALL_FULL_DATADIR}/modern-xmb/shaders"
+            XMB_INSTALL_SHADER_DIR="${CMAKE_INSTALL_FULL_DATADIR}/modern-moyou/shaders"
     )
     target_compile_options(xmb_gfx PRIVATE -Wall -Wextra -Wpedantic)
     add_dependencies(xmb_gfx xmb_shaders)
@@ -164,7 +164,7 @@ endif()
 # ---------------------------------------------------------------------------
 # Main executable
 # ---------------------------------------------------------------------------
-add_executable(modern_xmb
+add_executable(modern-moyou
     src/main.cpp
     src/wayland_layer.cpp
     "${LAYER_SHELL_C}"
@@ -172,19 +172,19 @@ add_executable(modern_xmb
     "${XDG_SHELL_C}"
     "${XDG_SHELL_H}"
 )
-target_include_directories(modern_xmb PRIVATE "${WL_PROTO_OUT_DIR}")
-target_link_libraries(modern_xmb PRIVATE
+target_include_directories(modern-moyou PRIVATE "${WL_PROTO_OUT_DIR}")
+target_link_libraries(modern-moyou PRIVATE
     xmb_assets
     xmb_sim
     PkgConfig::WAYLAND_CLIENT
 )
 if(Vulkan_FOUND)
-    target_link_libraries(modern_xmb PRIVATE xmb_gfx)
-    target_compile_definitions(modern_xmb PRIVATE XMB_HAS_VULKAN=1)
+    target_link_libraries(modern-moyou PRIVATE xmb_gfx)
+    target_compile_definitions(modern-moyou PRIVATE XMB_HAS_VULKAN=1)
 else()
-    add_dependencies(modern_xmb xmb_shaders)
+    add_dependencies(modern-moyou xmb_shaders)
 endif()
-target_compile_options(modern_xmb PRIVATE -Wall -Wextra -Wpedantic)
+target_compile_options(modern-moyou PRIVATE -Wall -Wextra -Wpedantic)
 
 # ---------------------------------------------------------------------------
 # Unit tests
@@ -207,5 +207,5 @@ add_test(NAME xmb_assets_and_sim COMMAND xmb_tests)
 # ---------------------------------------------------------------------------
 # Install rules (used by Arch PKGBUILD / `cmake --install`)
 # ---------------------------------------------------------------------------
-install(TARGETS modern_xmb RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
-install(FILES ${SHADER_SPV_OUTPUTS} DESTINATION "${CMAKE_INSTALL_DATADIR}/modern-xmb/shaders")
+install(TARGETS modern-moyou RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
+install(FILES ${SHADER_SPV_OUTPUTS} DESTINATION "${CMAKE_INSTALL_DATADIR}/modern-moyou/shaders")

@@ -1,8 +1,8 @@
-# Modern-XMB
+# modern-moyou
 
-A native **C++20 + Vulkan + SIMD (AVX2 / AVX-512) + SDL3 / Wayland `wlr-layer-shell`** recreation of the PlayStation 3 XMB (*XrossMediaBar*) dynamic silk ribbon, bokeh particle field, procedural seasonal sky, and 5-mip RGB Gaussian HDR glare pipeline.
+A native **C++20 + Vulkan + SIMD (AVX2 / AVX-512) + SDL3 / Wayland `wlr-layer-shell`** recreation of the PlayStation 3 *moyou* (模様 — dynamic silk ribbon), bokeh particle field, seasonal sky, and 5-mip RGB Gaussian HDR glare engine.
 
-Works **out of the box** with a built-in 12-month procedural theme (zero proprietary files required), and can also load your own legally dumped PS3 `.qrc` wave archives from `~/.local/share/modern-xmb/`.
+Works **out of the box** with a built-in 12-month procedural theme (zero proprietary files required), and can also load your own legally dumped `.qrc` wave archives from `~/.local/share/modern-moyou/`.
 
 ## Features
 - **True SPU-Faithful Simulation (`~0.09 ms/frame` CPU):**
@@ -14,7 +14,7 @@ Works **out of the box** with a built-in 12-month procedural theme (zero proprie
   - Renders directly to a click-through compositor layer (ideal for Hyprland / Omarchy overlays and live wallpapers) with smooth fade-in/fade-out and live IPC preview.
 - **Live System Clock & Smooth Time-of-Day Morphing:**
   - Tracks local month and time of day automatically, smoothly crossfading `night → yoake (dawn) → day → higure (dusk) → night` overrides.
-- **Zero-Restart Live IPC Socket (`$XDG_RUNTIME_DIR/modern-xmb-wind.sock`):**
+- **Zero-Restart Live IPC Socket (`$XDG_RUNTIME_DIR/modern-moyou-wind.sock`):**
   - Non-blocking UNIX datagram socket for menu-driven particle wind gusts and live hover-previews of month, time of day, opacity, overrides, and `.qrc` presets.
 
 ## Install on Arch / Omarchy
@@ -22,8 +22,8 @@ Works **out of the box** with a built-in 12-month procedural theme (zero proprie
 ### From Source
 ```bash
 sudo pacman -S --needed cmake ninja vulkan-headers vulkan-icd-loader shaderc sdl3 wayland wayland-protocols pkgconf zlib
-git clone https://github.com/keylimesoda/Modern-XMB.git
-cd Modern-XMB
+git clone https://github.com/keylimesoda/modern-moyou.git
+cd modern-moyou
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
 cmake --build build
 ctest --test-dir build --output-on-failure
@@ -40,34 +40,34 @@ makepkg -si
 
 ### Run Out of the Box (Built-in Procedural Theme)
 ```bash
-modern_xmb
+modern-moyou
 ```
 Or as a translucent Wayland `wlr-layer-shell` background:
 ```bash
-modern_xmb --layer-shell --opacity 0.96
+modern-moyou --layer-shell --opacity 0.96
 ```
 
-### Using Your Own Legally Dumped PS3 `.qrc` Assets
+### Using Your Own Legally Dumped `.qrc` Assets
 This repository contains **no proprietary Sony files** (no `.qrc`, `.rco`, `.prx`, or `SCE-PS3-*.TTF` fonts).
 
 If you own a PS3 and have legally dumped `lines.qrc` (or community `.qrc` waves), drop them into:
 ```bash
-mkdir -p ~/.local/share/modern-xmb/qrc
-cp /path/to/your/lines.qrc ~/.local/share/modern-xmb/qrc/
+mkdir -p ~/.local/share/modern-moyou/qrc
+cp /path/to/your/lines.qrc ~/.local/share/modern-moyou/qrc/
 ```
-`modern_xmb` automatically discovers `.qrc` files in `~/.local/share/modern-xmb/` on startup, or you can pass an explicit file/directory:
+`modern-moyou` automatically discovers `.qrc` files in `~/.local/share/modern-moyou/` on startup, or you can pass an explicit file/directory:
 ```bash
-modern_xmb --qrc /path/to/lines.qrc
-modern_xmb --procedural          # force built-in procedural theme
+modern-moyou --qrc /path/to/lines.qrc
+modern-moyou --procedural          # force built-in procedural theme
 ```
 
 ### CLI Options
 ```text
-modern_xmb [--layer-shell] [--qrc <path> | --procedural]
-           [--month auto|<1-12>] [--month-day <1-30>]
-           [--time auto|dawn|noon|dusk|night|<0-24>] [--day-time <0-2400>]
-           [--override auto|base|<name>]
-           [--opacity <0.05-1.0>]
+modern-moyou [--layer-shell] [--qrc <path> | --procedural]
+             [--month auto|<1-12>] [--month-day <1-30>]
+             [--time auto|dawn|noon|dusk|night|<0-24>] [--day-time <0-2400>]
+             [--override auto|base|<name>]
+             [--opacity <0.05-1.0>]
 ```
 
 ### Windowed Controls
@@ -84,15 +84,15 @@ modern_xmb [--layer-shell] [--qrc <path> | --procedural]
 | `I` | Print full parameters to terminal |
 | `Space` / `R` / `F` / `Esc` | Pause / Reset / Fullscreen / Quit |
 
-### Live IPC Socket (`$XDG_RUNTIME_DIR/modern-xmb-wind.sock`)
-Send single-line datagrams while `modern_xmb` is running (works in both `--layer-shell` and windowed modes):
+### Live IPC Socket (`$XDG_RUNTIME_DIR/modern-moyou-wind.sock`)
+Send single-line datagrams while `modern-moyou` is running (works in both `--layer-shell` and windowed modes):
 - **Particle wind:** `left`, `right`, `up`, `down`, `shake`, `wind <nx> <ny> <vx> <vy>`
 - **Live preview:** `month auto|<1..12>`, `time auto|dawn|noon|dusk|night|<0..24>`, `opacity <0.05..1.0>`, `override auto|base|<name>`, `qrc <path>|procedural`
 
 ```bash
-printf 'right'     | socat - UNIX-SENDTO:"$XDG_RUNTIME_DIR/modern-xmb-wind.sock"
-printf 'time dusk' | socat - UNIX-SENDTO:"$XDG_RUNTIME_DIR/modern-xmb-wind.sock"
-printf 'month 7'   | socat - UNIX-SENDTO:"$XDG_RUNTIME_DIR/modern-xmb-wind.sock"
+printf 'right'     | socat - UNIX-SENDTO:"$XDG_RUNTIME_DIR/modern-moyou-wind.sock"
+printf 'time dusk' | socat - UNIX-SENDTO:"$XDG_RUNTIME_DIR/modern-moyou-wind.sock"
+printf 'month 7'   | socat - UNIX-SENDTO:"$XDG_RUNTIME_DIR/modern-moyou-wind.sock"
 ```
 
 ## License

@@ -1311,7 +1311,7 @@ void VkRenderer::update_descriptor_sets() {
 
 VkShaderModule VkRenderer::load_shader_module(const char* filename, std::string* out_error) {
     std::vector<std::string> search_dirs;
-    if (const char* env_dir = std::getenv("MODERN_XMB_SHADER_DIR"); env_dir && env_dir[0] != '\0') {
+    if (const char* env_dir = std::getenv("MODERN_MOYOU_SHADER_DIR"); env_dir && env_dir[0] != '\0') {
         search_dirs.emplace_back(env_dir);
     }
 #ifdef XMB_INSTALL_SHADER_DIR
