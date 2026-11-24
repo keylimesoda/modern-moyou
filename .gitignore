@@ -1,0 +1,39 @@
+# Build outputs
+build/
+*.o
+*.a
+*.spv
+compile_commands.json
+
+# Arch packaging artifacts
+pkg/
+src/pkg/
+*.pkg.tar.zst
+*.pkg.tar.xz
+*.pkg.tar.gz
+
+# Proprietary / copyrighted Sony PS3 OFW assets & dumps (NEVER commit!)
+/extracted/
+/re/
+/assets/
+*.qrc
+*.prx
+*.sprx
+*.rco
+*.elf
+*.self
+*.PUP
+*.pup
+*.TTF
+*.ttf
+*.otf
+*.dds
+*.tga
+*.gim
+
+# Python & editor caches
+tools/__pycache__/
+*.pyc
+.DS_Store
+*.swp
+*~
