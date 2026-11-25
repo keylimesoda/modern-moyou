@@ -1,4 +1,5 @@
 #include "assets/dds_loader.hpp"
+#include "assets/json_theme.hpp"
 #include "assets/mnu_parser.hpp"
 #include "assets/qrc_loader.hpp"
 #include "gfx/proc_luts.hpp"
@@ -210,6 +211,50 @@ int main() {
             CHECK(t_night.line1.brightness > t_noon.line1.brightness + 0.1f);
             CHECK(t_dusk.hdr.exposure > t_noon.hdr.exposure && t_dusk.hdr.exposure < t_night.hdr.exposure);
         }
+    }
+
+    // 12. Open JSON theme bundles (modern-moyou-theme/v1)
+    {
+        const std::filesystem::path themes_dir(XMB_THEMES_DIR);
+
+        xmb::assets::JsonThemeBundle classic;
+        CHECK(classic.load_from_file(themes_dir / "classic-silk.json", &err));
+        CHECK(classic.name == "Classic Silk (Seasonal)");
+        CHECK(!classic.has_custom_sky);
+        CHECK(!classic.has_iridescent_tint);
+        CHECK(classic.tod_rig.loaded);
+        const auto classic_noon = classic.tod_rig.evaluate(1200.0f);
+        const auto classic_night = classic.tod_rig.evaluate(100.0f);
+        CHECK(classic_night.hdr.exposure > classic_noon.hdr.exposure + 0.2f);
+        CHECK(classic_night.line1.brightness > classic_noon.line1.brightness + 0.1f);
+        const auto classic_ovs = classic.list_overrides();
+        CHECK(!classic_ovs.empty());
+        xmb::assets::XmbThemeConfig ov_night;
+        CHECK(classic.get_override("night", ov_night));
+        CHECK(ov_night.hdr.exposure > 1.3f);
+        const auto jan_lut = classic.build_sky_lut(1, false);
+        const auto jul_lut = classic.build_sky_lut(7, false);
+        CHECK(jan_lut.width == 64 && jan_lut.height == 32 && jan_lut.pixels.size() == 64u * 32u * 4u);
+        CHECK(jul_lut.pixels != jan_lut.pixels);
+
+        xmb::assets::JsonThemeBundle obsidian;
+        CHECK(obsidian.load_from_file(themes_dir / "midnight-obsidian.json", &err));
+        CHECK(obsidian.has_custom_sky);
+        const auto obs_lut = obsidian.build_sky_lut(6, false);
+        CHECK(obs_lut.width == 64 && obs_lut.height == 32);
+        CHECK(obs_lut.pixels[0] <= 10 && obs_lut.pixels[1] <= 10 && obs_lut.pixels[2] <= 15);
+
+        xmb::assets::JsonThemeBundle cobalt;
+        CHECK(cobalt.load_from_file(themes_dir / "deep-cobalt.json", &err));
+        CHECK(cobalt.has_iridescent_tint);
+        const auto cobalt_irid = cobalt.build_iridescent_lut();
+        CHECK(cobalt_irid.width == 16 && cobalt_irid.height == 16);
+        CHECK(cobalt_irid.pixels[2] > cobalt_irid.pixels[0]); // blue channel > red channel
+
+        xmb::assets::JsonThemeBundle bad;
+        std::string parse_err;
+        CHECK(!bad.load_from_string("{ invalid json", &parse_err));
+        CHECK(!parse_err.empty());
     }
 
     if (g_failures == 0) {

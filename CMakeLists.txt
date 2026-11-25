@@ -113,6 +113,7 @@ add_library(xmb_assets STATIC
     src/assets/qrc_loader.cpp
     src/assets/mnu_parser.cpp
     src/assets/dds_loader.cpp
+    src/assets/json_theme.cpp
     src/gfx/proc_luts.cpp
 )
 target_include_directories(xmb_assets PUBLIC "${CMAKE_CURRENT_SOURCE_DIR}/src")
@@ -184,6 +185,10 @@ if(Vulkan_FOUND)
 else()
     add_dependencies(modern-moyou xmb_shaders)
 endif()
+target_compile_definitions(modern-moyou PRIVATE
+    XMB_INSTALL_THEMES_DIR="${CMAKE_INSTALL_FULL_DATADIR}/modern-moyou/themes"
+    XMB_SOURCE_THEMES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/themes"
+)
 target_compile_options(modern-moyou PRIVATE -Wall -Wextra -Wpedantic)
 
 # ---------------------------------------------------------------------------
@@ -199,6 +204,7 @@ target_link_libraries(xmb_tests PRIVATE
 )
 target_compile_definitions(xmb_tests PRIVATE
     XMB_ASSETS_DIR="${CMAKE_CURRENT_SOURCE_DIR}/assets"
+    XMB_THEMES_DIR="${CMAKE_CURRENT_SOURCE_DIR}/themes"
 )
 target_compile_options(xmb_tests PRIVATE -Wall -Wextra -Wpedantic)
 
@@ -209,3 +215,6 @@ add_test(NAME xmb_assets_and_sim COMMAND xmb_tests)
 # ---------------------------------------------------------------------------
 install(TARGETS modern-moyou RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}")
 install(FILES ${SHADER_SPV_OUTPUTS} DESTINATION "${CMAKE_INSTALL_DATADIR}/modern-moyou/shaders")
+install(DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}/themes/"
+    DESTINATION "${CMAKE_INSTALL_DATADIR}/modern-moyou/themes"
+    FILES_MATCHING PATTERN "*.json")

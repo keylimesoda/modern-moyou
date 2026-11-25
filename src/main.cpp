@@ -1,4 +1,5 @@
 #include "assets/dds_loader.hpp"
+#include "assets/json_theme.hpp"
 #include "assets/mnu_parser.hpp"
 #include "assets/qrc_loader.hpp"
 #include "gfx/proc_luts.hpp"
@@ -52,36 +53,95 @@ ClockDefaults local_clock_defaults() {
     return out;
 }
 
+bool is_builtin_token(std::string_view sv) {
+    return sv == "procedural" || sv == "builtin";
+}
+
+bool is_json_path(const std::filesystem::path& p) {
+    const std::string ext = p.extension().string();
+    return ext == ".json" || ext == ".JSON";
+}
+
+bool is_theme_file(const std::filesystem::path& p) {
+    const std::string ext = p.extension().string();
+    return ext == ".json" || ext == ".JSON" || ext == ".qrc" || ext == ".QRC";
+}
+
+xmb::assets::TimeOfDayRig make_procedural_tod_rig() {
+    xmb::assets::TimeOfDayRig rig;
+    rig.base = xmb::assets::XmbThemeConfig{};
+    rig.day = rig.base;
+    rig.yoake = rig.base;
+    rig.higure = rig.base;
+    rig.night = rig.base;
+    rig.night.line1.brightness = 0.90f;
+    rig.night.line1.fresnel = 0.52f;
+    rig.night.line1.ang_rot = 10.0f;
+    rig.night.line1.ffd_param1 = -1.83f;
+    rig.night.hdr.exposure = 1.38f;
+    rig.night.hdr.white_level = 1.00f;
+    rig.night.hdr.glare_level = 1.30f;
+    rig.loaded = true;
+    return rig;
+}
+
 int run_inspect(
-    const std::string& qrc_path,
+    const std::string& theme_path,
     const std::string& override_name,
     int month,
     bool run_benchmark) {
-    xmb::assets::QrcArchive archive;
     std::string err;
-    if (!archive.load_from_file(qrc_path, &err)) {
-        std::cerr << "Error loading QRC: " << err << "\n";
-        return 1;
-    }
-
-    std::cout << "=== QRC Archive ===\n";
-    std::cout << "  Path:       " << qrc_path << "\n";
-    std::cout << "  Format:     " << (archive.was_compressed() ? "QRCC (zlib -> QRCF)" : "QRCF (raw)") << "\n";
-    std::cout << "  Version:    0x" << std::hex << archive.version() << std::dec << "\n";
-    std::cout << "  Files:      " << archive.file_count() << "\n";
-
-    auto overrides = archive.list_overrides();
-    std::cout << "  Overrides (" << overrides.size() << "): ";
-    for (std::size_t i = 0; i < overrides.size(); ++i) {
-        if (i > 0) std::cout << ", ";
-        std::cout << overrides[i];
-    }
-    std::cout << "\n\n";
-
     xmb::assets::XmbThemeConfig theme;
-    if (!xmb::assets::XmbThemeConfig::load_from_qrc(archive, theme, override_name, &err)) {
-        std::cerr << "Error parsing MNU configs: " << err << "\n";
-        return 1;
+    xmb::assets::QrcArchive archive;
+    const bool json_mode = is_json_path(std::filesystem::path(theme_path));
+
+    if (json_mode) {
+        xmb::assets::JsonThemeBundle bundle;
+        if (!bundle.load_from_file(theme_path, &err)) {
+            std::cerr << "Error loading JSON theme: " << err << "\n";
+            return 1;
+        }
+        std::cout << "=== Open JSON Theme (modern-moyou-theme/v1) ===\n";
+        std::cout << "  Path:       " << theme_path << "\n";
+        std::cout << "  Name:       " << bundle.name << "\n";
+        std::cout << "  Custom Sky: " << (bundle.has_custom_sky ? "yes" : "procedural") << "\n";
+        auto overrides = bundle.list_overrides();
+        std::cout << "  Overrides (" << overrides.size() << "): ";
+        for (std::size_t i = 0; i < overrides.size(); ++i) {
+            if (i > 0) std::cout << ", ";
+            std::cout << overrides[i];
+        }
+        std::cout << "\n\n";
+        if (override_name.empty()) {
+            theme = bundle.tod_rig.base;
+        } else if (!bundle.get_override(override_name, theme)) {
+            std::cerr << "Error: override '" << override_name << "' not found in " << theme_path << "\n";
+            return 1;
+        }
+    } else {
+        if (!archive.load_from_file(theme_path, &err)) {
+            std::cerr << "Error loading QRC: " << err << "\n";
+            return 1;
+        }
+
+        std::cout << "=== QRC Archive ===\n";
+        std::cout << "  Path:       " << theme_path << "\n";
+        std::cout << "  Format:     " << (archive.was_compressed() ? "QRCC (zlib -> QRCF)" : "QRCF (raw)") << "\n";
+        std::cout << "  Version:    0x" << std::hex << archive.version() << std::dec << "\n";
+        std::cout << "  Files:      " << archive.file_count() << "\n";
+
+        auto overrides = archive.list_overrides();
+        std::cout << "  Overrides (" << overrides.size() << "): ";
+        for (std::size_t i = 0; i < overrides.size(); ++i) {
+            if (i > 0) std::cout << ", ";
+            std::cout << overrides[i];
+        }
+        std::cout << "\n\n";
+
+        if (!xmb::assets::XmbThemeConfig::load_from_qrc(archive, theme, override_name, &err)) {
+            std::cerr << "Error parsing MNU configs: " << err << "\n";
+            return 1;
+        }
     }
 
     std::cout << "=== Parsed Theme Config"
@@ -111,33 +171,35 @@ int run_inspect(
               << " brownian=" << theme.particles.brownian_scale
               << " glare=" << theme.particles.glare << "\n\n";
 
-    const int m1 = std::clamp(month, 1, 12);
-    const int m2 = (m1 % 12) + 1;
-    char m1_buf[8], m2_buf[8];
-    std::snprintf(m1_buf, sizeof(m1_buf), "%02d", m1);
-    std::snprintf(m2_buf, sizeof(m2_buf), "%02d", m2);
+    if (!json_mode) {
+        const int m1 = std::clamp(month, 1, 12);
+        const int m2 = (m1 % 12) + 1;
+        char m1_buf[8], m2_buf[8];
+        std::snprintf(m1_buf, sizeof(m1_buf), "%02d", m1);
+        std::snprintf(m2_buf, sizeof(m2_buf), "%02d", m2);
 
-    std::cout << "=== Month Background DDS Textures (months " << m1_buf << " -> " << m2_buf << ") ===\n";
-    for (const std::string& tex_path : {
-             std::string("textures/month_bg/rgb/") + m1_buf + ".dds",
-             std::string("textures/month_bg/rgb/") + m2_buf + ".dds",
-             std::string("textures/month_bg/night/") + m1_buf + ".dds",
-             std::string("textures/month_bg/night/") + m2_buf + ".dds",
-         }) {
-        if (!archive.has(tex_path)) {
-            std::cout << "  " << tex_path << ": [not present in archive]\n";
-            continue;
+        std::cout << "=== Month Background DDS Textures (months " << m1_buf << " -> " << m2_buf << ") ===\n";
+        for (const std::string& tex_path : {
+                 std::string("textures/month_bg/rgb/") + m1_buf + ".dds",
+                 std::string("textures/month_bg/rgb/") + m2_buf + ".dds",
+                 std::string("textures/month_bg/night/") + m1_buf + ".dds",
+                 std::string("textures/month_bg/night/") + m2_buf + ".dds",
+             }) {
+            if (!archive.has(tex_path)) {
+                std::cout << "  " << tex_path << ": [not present in archive]\n";
+                continue;
+            }
+            xmb::assets::DdsImage img;
+            if (!xmb::assets::load_dds_from_memory(archive.read(tex_path), img, &err)) {
+                std::cerr << "  Error loading " << tex_path << ": " << err << "\n";
+                return 1;
+            }
+            const auto& p = img.mips[0].pixels;
+            std::cout << "  " << tex_path << ": " << img.width << "x" << img.height
+                      << " mips=" << img.mip_levels
+                      << " fmt=" << xmb::assets::dds_format_name(img.format)
+                      << " px[0]=(" << int(p[0]) << "," << int(p[1]) << "," << int(p[2]) << "," << int(p[3]) << ")\n";
         }
-        xmb::assets::DdsImage img;
-        if (!xmb::assets::load_dds_from_memory(archive.read(tex_path), img, &err)) {
-            std::cerr << "  Error loading " << tex_path << ": " << err << "\n";
-            return 1;
-        }
-        const auto& p = img.mips[0].pixels;
-        std::cout << "  " << tex_path << ": " << img.width << "x" << img.height
-                  << " mips=" << img.mip_levels
-                  << " fmt=" << xmb::assets::dds_format_name(img.format)
-                  << " px[0]=(" << int(p[0]) << "," << int(p[1]) << "," << int(p[2]) << "," << int(p[3]) << ")\n";
     }
 
     // Exercise AVX-512 SPU kernel ports headlessly
@@ -183,8 +245,8 @@ int run_inspect(
 
 void print_usage(const char* argv0) {
     std::cout << "Usage:\n"
-              << "  " << argv0 << " --inspect <qrc_path> [--override <name>] [--month <1-12>] [--benchmark]\n"
-              << "  " << argv0 << " [--layer-shell] [--qrc] <qrc_path> [--override auto|<name>] [--month auto|<1-12>] [--month-day <1-30>] [--time auto|dawn|noon|dusk|night|<0-24>] [--day-time <0-2400>] [--opacity <0.05-1.0>]\n";
+              << "  " << argv0 << " --inspect <theme.json|lines.qrc> [--override <name>] [--month <1-12>] [--benchmark]\n"
+              << "  " << argv0 << " [--layer-shell] [--theme|--qrc <path> | --procedural] [--override auto|base|<name>] [--month auto|<1-12>] [--month-day <1-30>] [--time auto|dawn|noon|dusk|night|<0-24>] [--day-time <0-2400>] [--opacity <0.05-1.0>]\n";
 }
 
 bool parse_time_value(std::string_view sv, float& out_day_time, bool& out_is_auto) {
@@ -298,6 +360,9 @@ public:
             } else if (msg.rfind("qrc ", 0) == 0 && cb.on_qrc) {
                 const std::string_view p = msg.substr(4);
                 if (!p.empty()) cb.on_qrc(p);
+            } else if (msg.rfind("theme ", 0) == 0 && cb.on_qrc) {
+                const std::string_view p = msg.substr(6);
+                if (!p.empty()) cb.on_qrc(p);
             }
         }
     }
@@ -313,6 +378,140 @@ public:
 private:
     int fd_ = -1;
     std::string path_;
+};
+// Unified theme source supporting built-in procedural, open .json themes, and .qrc archives.
+struct ThemeSource {
+    enum class Kind { Procedural, Qrc, Json };
+    Kind kind = Kind::Procedural;
+    xmb::assets::QrcArchive archive;
+    xmb::assets::JsonThemeBundle json_bundle;
+    xmb::assets::TimeOfDayRig tod_rig;
+
+    bool load(std::string_view path, std::string* out_error = nullptr) {
+        if (is_builtin_token(path)) {
+            kind = Kind::Procedural;
+            archive = {};
+            json_bundle = {};
+            tod_rig = make_procedural_tod_rig();
+            return true;
+        }
+        if (is_json_path(std::filesystem::path(path))) {
+            xmb::assets::JsonThemeBundle next_json;
+            if (!next_json.load_from_file(std::filesystem::path(path), out_error)) {
+                return false;
+            }
+            kind = Kind::Json;
+            archive = {};
+            tod_rig = next_json.tod_rig;
+            json_bundle = std::move(next_json);
+            return true;
+        }
+        xmb::assets::QrcArchive next_arch;
+        if (!next_arch.load_from_file(std::string(path), out_error)) {
+            return false;
+        }
+        xmb::assets::TimeOfDayRig next_rig;
+        if (!next_rig.load_from_qrc(next_arch, out_error)) {
+            return false;
+        }
+        kind = Kind::Qrc;
+        json_bundle = {};
+        archive = std::move(next_arch);
+        tod_rig = std::move(next_rig);
+        return true;
+    }
+
+    [[nodiscard]] std::vector<std::string> list_overrides() const {
+        if (kind == Kind::Qrc) return archive.list_overrides();
+        if (kind == Kind::Json) return json_bundle.list_overrides();
+        return {};
+    }
+
+    bool resolve_config(
+        bool auto_override,
+        std::string_view override_name,
+        float day_time,
+        xmb::assets::XmbThemeConfig& out_cfg,
+        std::string* out_error = nullptr) const {
+        if (auto_override) {
+            out_cfg = tod_rig.evaluate(day_time);
+            return true;
+        }
+        if (kind == Kind::Procedural) {
+            out_cfg = tod_rig.base;
+            return true;
+        }
+        if (kind == Kind::Json) {
+            if (override_name.empty()) {
+                out_cfg = tod_rig.base;
+                return true;
+            }
+            if (json_bundle.get_override(override_name, out_cfg)) {
+                return true;
+            }
+            out_cfg = tod_rig.base;
+            return true;
+        }
+        return xmb::assets::XmbThemeConfig::load_from_qrc(archive, out_cfg, override_name, out_error);
+    }
+
+    void upload_sky_luts(xmb::gfx::VkRenderer& renderer, int month, std::string* out_error = nullptr) const {
+        const int m1 = std::clamp(month, 1, 12);
+        const int m2 = (m1 % 12) + 1;
+        if (kind == Kind::Procedural) {
+            renderer.upload_background_luts_rgba8(
+                xmb::gfx::generate_procedural_sky_lut(m1, false),
+                xmb::gfx::generate_procedural_sky_lut(m2, false),
+                xmb::gfx::generate_procedural_sky_lut(m1, true),
+                xmb::gfx::generate_procedural_sky_lut(m2, true),
+                out_error);
+            return;
+        }
+        if (kind == Kind::Json) {
+            renderer.upload_background_luts_rgba8(
+                json_bundle.build_sky_lut(m1, false),
+                json_bundle.build_sky_lut(m2, false),
+                json_bundle.build_sky_lut(m1, true),
+                json_bundle.build_sky_lut(m2, true),
+                out_error);
+            return;
+        }
+        char b1[8], b2[8];
+        std::snprintf(b1, sizeof(b1), "%02d", m1);
+        std::snprintf(b2, sizeof(b2), "%02d", m2);
+        auto load_dds = [&](const std::string& p, xmb::assets::DdsImage& out) {
+            return archive.has(p) && xmb::assets::load_dds_from_memory(archive.read(p), out, out_error);
+        };
+        xmb::assets::DdsImage d1, d2, n1, n2;
+        if (load_dds(std::string("textures/month_bg/rgb/") + b1 + ".dds", d1) &&
+            load_dds(std::string("textures/month_bg/rgb/") + b2 + ".dds", d2) &&
+            load_dds(std::string("textures/month_bg/night/") + b1 + ".dds", n1) &&
+            load_dds(std::string("textures/month_bg/night/") + b2 + ".dds", n2)) {
+            renderer.upload_background_luts(d1, d2, n1, n2, out_error);
+        }
+    }
+
+    void upload_tga_luts(xmb::gfx::VkRenderer& renderer, std::string* out_error = nullptr) const {
+        if (kind == Kind::Qrc && archive.has("textures/TGA/freslut1.tga")) {
+            xmb::gfx::Rgba8Image img;
+            if (xmb::gfx::load_tga_rgba8(archive.read("textures/TGA/freslut1.tga"), img, out_error)) {
+                renderer.upload_fresnel_lut(img, out_error);
+            }
+        } else {
+            renderer.upload_fresnel_lut(xmb::gfx::generate_fresnel_lut(), out_error);
+        }
+
+        if (kind == Kind::Qrc && archive.has("particles/proc_iridescent.tga")) {
+            xmb::gfx::Rgba8Image img;
+            if (xmb::gfx::load_tga_rgba8(archive.read("particles/proc_iridescent.tga"), img, out_error)) {
+                renderer.upload_iridescent_lut(img, out_error);
+            }
+        } else if (kind == Kind::Json) {
+            renderer.upload_iridescent_lut(json_bundle.build_iridescent_lut(), out_error);
+        } else {
+            renderer.upload_iridescent_lut(xmb::gfx::generate_iridescent_lut(), out_error);
+        }
+    }
 };
 #endif
 
@@ -343,7 +542,7 @@ int main(int argc, char** argv) {
             benchmark_mode = true;
         } else if (arg == "--layer-shell") {
             layer_shell_mode = true;
-        } else if (arg == "--qrc" && i + 1 < argc) {
+        } else if ((arg == "--qrc" || arg == "--theme") && i + 1 < argc) {
             qrc_path = argv[++i];
         } else if (arg == "--opacity" && i + 1 < argc) {
             surface_alpha = std::clamp(std::stof(argv[++i]), 0.05f, 1.0f);
@@ -388,7 +587,7 @@ int main(int argc, char** argv) {
     }
 
     if (inspect_mode) {
-        if (qrc_path.empty() || qrc_path == "procedural") {
+        if (qrc_path.empty() || is_builtin_token(qrc_path)) {
             print_usage(argv[0]);
             return 1;
         }
@@ -405,10 +604,19 @@ int main(int argc, char** argv) {
     namespace fs = std::filesystem;
     std::string err;
 
-    // Auto-discover ~/.local/share/modern-moyou/ (or legacy modern-xmb/) if no .qrc path was specified;
-    // fall back to built-in procedural theme.
+    // Auto-discover ~/.local/share/modern-moyou/ (or legacy modern-xmb/), then installed
+    // /usr/share/modern-moyou/themes/, then source themes/, falling back to built-in procedural.
     std::vector<std::string> playlist;
     if (qrc_path.empty()) {
+        auto scan_dir = [&](const std::string& dir) {
+            std::error_code ec;
+            if (!fs::is_directory(dir, ec)) return;
+            for (const auto& e : fs::recursive_directory_iterator(dir, ec)) {
+                if (e.is_regular_file() && is_theme_file(e.path())) {
+                    playlist.push_back(e.path().string());
+                }
+            }
+        };
         std::string data_root;
         if (const char* xdg = std::getenv("XDG_DATA_HOME"); xdg && xdg[0] != '\0') {
             data_root = std::string(xdg);
@@ -417,23 +625,25 @@ int main(int argc, char** argv) {
         }
         if (!data_root.empty()) {
             for (const char* sub : {"/modern-moyou", "/modern-xmb"}) {
-                const std::string data_dir = data_root + sub;
-                std::error_code ec;
-                if (fs::is_directory(data_dir, ec)) {
-                    for (const auto& e : fs::recursive_directory_iterator(data_dir, ec)) {
-                        if (e.is_regular_file() && e.path().extension() == ".qrc") {
-                            playlist.push_back(e.path().string());
-                        }
-                    }
-                }
+                scan_dir(data_root + sub);
                 if (!playlist.empty()) break;
             }
+        }
+        if (playlist.empty()) {
+#ifdef XMB_INSTALL_THEMES_DIR
+            scan_dir(XMB_INSTALL_THEMES_DIR);
+#endif
+        }
+        if (playlist.empty()) {
+#ifdef XMB_SOURCE_THEMES_DIR
+            scan_dir(XMB_SOURCE_THEMES_DIR);
+#endif
         }
         std::sort(playlist.begin(), playlist.end());
         if (playlist.empty()) {
             playlist.emplace_back("procedural");
         }
-    } else if (qrc_path == "procedural") {
+    } else if (is_builtin_token(qrc_path)) {
         playlist.emplace_back("procedural");
     } else {
         const fs::path in(qrc_path);
@@ -441,44 +651,30 @@ int main(int argc, char** argv) {
         const fs::path root = fs::is_directory(in, ec) ? in : in.parent_path();
         if (fs::is_directory(in, ec)) {
             for (const auto& e : fs::recursive_directory_iterator(root, ec)) {
-                if (e.is_regular_file() && e.path().extension() == ".qrc") playlist.push_back(e.path().string());
+                if (e.is_regular_file() && is_theme_file(e.path())) playlist.push_back(e.path().string());
             }
         } else {
-            for (const auto& e : fs::directory_iterator(root, ec)) {
-                if (e.is_regular_file() && e.path().extension() == ".qrc") playlist.push_back(e.path().string());
+            if (!root.empty()) {
+                for (const auto& e : fs::directory_iterator(root, ec)) {
+                    if (e.is_regular_file() && is_theme_file(e.path())) playlist.push_back(e.path().string());
+                }
             }
-            if (playlist.empty()) playlist.push_back(qrc_path);
+            if (std::find(playlist.begin(), playlist.end(), qrc_path) == playlist.end()) {
+                playlist.push_back(qrc_path);
+            }
         }
         std::sort(playlist.begin(), playlist.end());
         if (playlist.empty()) {
-            std::cerr << "No .qrc files found at " << qrc_path << ", falling back to built-in procedural theme.\n";
+            std::cerr << "No .json or .qrc theme files found at " << qrc_path << ", falling back to built-in procedural theme.\n";
             playlist.emplace_back("procedural");
         }
     }
 
     size_t cur = 0;
-    if (!qrc_path.empty() && qrc_path != "procedural" && !fs::is_directory(fs::path(qrc_path))) {
+    if (!qrc_path.empty() && !is_builtin_token(qrc_path) && !fs::is_directory(fs::path(qrc_path))) {
         const auto it = std::find(playlist.begin(), playlist.end(), qrc_path);
         if (it != playlist.end()) cur = static_cast<size_t>(it - playlist.begin());
     }
-
-    auto make_procedural_tod_rig = []() -> xmb::assets::TimeOfDayRig {
-        xmb::assets::TimeOfDayRig rig;
-        rig.base = xmb::assets::XmbThemeConfig{};
-        rig.day = rig.base;
-        rig.yoake = rig.base;
-        rig.higure = rig.base;
-        rig.night = rig.base;
-        rig.night.line1.brightness = 0.90f;
-        rig.night.line1.fresnel = 0.52f;
-        rig.night.line1.ang_rot = 10.0f;
-        rig.night.line1.ffd_param1 = -1.83f;
-        rig.night.hdr.exposure = 1.38f;
-        rig.night.hdr.white_level = 1.00f;
-        rig.night.hdr.glare_level = 1.30f;
-        rig.loaded = true;
-        return rig;
-    };
 
     if (layer_shell_mode) {
         std::signal(SIGINT, handle_layer_signal);
@@ -497,83 +693,28 @@ int main(int argc, char** argv) {
             return 1;
         }
 
-        bool is_procedural = (playlist[cur] == "procedural");
-        xmb::assets::QrcArchive archive;
-        xmb::assets::TimeOfDayRig tod_rig;
+        ThemeSource source;
         xmb::assets::XmbThemeConfig theme;
-        if (is_procedural) {
-            tod_rig = make_procedural_tod_rig();
-            theme = tod_rig.evaluate(day_time);
-        } else {
-            if (!archive.load_from_file(playlist[cur], &err)) {
-                std::cerr << "Failed to load " << playlist[cur] << ": " << err << "\n";
-                renderer.shutdown();
-                layer.shutdown();
-                return 1;
-            }
-            if (custom_override) {
-                if (!xmb::assets::XmbThemeConfig::load_from_qrc(archive, theme, override_name, &err)) {
-                    std::cerr << "Failed to parse theme: " << err << "\n";
-                    renderer.shutdown();
-                    layer.shutdown();
-                    return 1;
-                }
-            } else {
-                if (!tod_rig.load_from_qrc(archive, &err)) {
-                    std::cerr << "Failed to parse time-of-day overrides: " << err << "\n";
-                    renderer.shutdown();
-                    layer.shutdown();
-                    return 1;
-                }
-                theme = tod_rig.evaluate(day_time);
-            }
+        if (!source.load(playlist[cur], &err)) {
+            std::cerr << "Failed to load " << playlist[cur] << ": " << err << "\n";
+            renderer.shutdown();
+            layer.shutdown();
+            return 1;
+        }
+        if (!source.resolve_config(!custom_override, override_name, day_time, theme, &err)) {
+            std::cerr << "Failed to resolve theme config: " << err << "\n";
+            renderer.shutdown();
+            layer.shutdown();
+            return 1;
         }
 
         auto reload_layer_luts = [&](int m) {
-            const int m1 = std::clamp(m, 1, 12);
-            const int m2 = (m1 % 12) + 1;
-            if (is_procedural) {
-                renderer.upload_background_luts_rgba8(
-                    xmb::gfx::generate_procedural_sky_lut(m1, false),
-                    xmb::gfx::generate_procedural_sky_lut(m2, false),
-                    xmb::gfx::generate_procedural_sky_lut(m1, true),
-                    xmb::gfx::generate_procedural_sky_lut(m2, true),
-                    &err);
-                return;
-            }
-            char b1[8], b2[8];
-            std::snprintf(b1, sizeof(b1), "%02d", m1);
-            std::snprintf(b2, sizeof(b2), "%02d", m2);
-            auto load_dds = [&](const std::string& p, xmb::assets::DdsImage& out) {
-                return archive.has(p) && xmb::assets::load_dds_from_memory(archive.read(p), out, &err);
-            };
-            xmb::assets::DdsImage d1, d2, n1, n2;
-            if (load_dds(std::string("textures/month_bg/rgb/") + b1 + ".dds", d1) &&
-                load_dds(std::string("textures/month_bg/rgb/") + b2 + ".dds", d2) &&
-                load_dds(std::string("textures/month_bg/night/") + b1 + ".dds", n1) &&
-                load_dds(std::string("textures/month_bg/night/") + b2 + ".dds", n2)) {
-                renderer.upload_background_luts(d1, d2, n1, n2, &err);
-            }
+            source.upload_sky_luts(renderer, m, &err);
+        };
+        auto reload_layer_tgas = [&]() {
+            source.upload_tga_luts(renderer, &err);
         };
         reload_layer_luts(month);
-        auto reload_layer_tgas = [&]() {
-            if (!is_procedural && archive.has("textures/TGA/freslut1.tga")) {
-                xmb::gfx::Rgba8Image img;
-                if (xmb::gfx::load_tga_rgba8(archive.read("textures/TGA/freslut1.tga"), img, &err)) {
-                    renderer.upload_fresnel_lut(img, &err);
-                }
-            } else {
-                renderer.upload_fresnel_lut(xmb::gfx::generate_fresnel_lut(), &err);
-            }
-            if (!is_procedural && archive.has("particles/proc_iridescent.tga")) {
-                xmb::gfx::Rgba8Image img;
-                if (xmb::gfx::load_tga_rgba8(archive.read("particles/proc_iridescent.tga"), img, &err)) {
-                    renderer.upload_iridescent_lut(img, &err);
-                }
-            } else {
-                renderer.upload_iridescent_lut(xmb::gfx::generate_iridescent_lut(), &err);
-            }
-        };
         reload_layer_tgas();
 
         xmb::sim::RibbonSim ribbon;
@@ -600,13 +741,9 @@ int main(int argc, char** argv) {
         bool auto_override = !custom_override;
 
         auto apply_layer_theme = [&]() {
-            if (auto_override) {
-                theme = tod_rig.evaluate(day_time);
-            } else {
-                xmb::assets::XmbThemeConfig t;
-                if (xmb::assets::XmbThemeConfig::load_from_qrc(archive, t, override_name, &err)) {
-                    theme = t;
-                }
+            xmb::assets::XmbThemeConfig t;
+            if (source.resolve_config(auto_override, override_name, day_time, t, &err)) {
+                theme = t;
             }
             ribbon.update_params(theme.line1);
             particles.update_params(theme.particles);
@@ -644,21 +781,9 @@ int main(int argc, char** argv) {
             apply_layer_theme();
         };
         layer_cb.on_qrc = [&](std::string_view p) {
-            if (p == "procedural") {
-                is_procedural = true;
-                tod_rig = make_procedural_tod_rig();
-                reload_layer_luts(month);
-                reload_layer_tgas();
-                apply_layer_theme();
-                return;
-            }
-            xmb::assets::QrcArchive next_arch;
-            if (!next_arch.load_from_file(std::string(p), &err)) return;
-            xmb::assets::TimeOfDayRig next_rig;
-            if (!next_rig.load_from_qrc(next_arch, &err)) return;
-            is_procedural = false;
-            archive = std::move(next_arch);
-            tod_rig = std::move(next_rig);
+            ThemeSource next_source;
+            if (!next_source.load(p, &err)) return;
+            source = std::move(next_source);
             reload_layer_luts(month);
             reload_layer_tgas();
             apply_layer_theme();
@@ -758,8 +883,7 @@ int main(int argc, char** argv) {
         return 1;
     }
 
-    xmb::assets::QrcArchive archive;
-    xmb::assets::TimeOfDayRig tod_rig;
+    ThemeSource source;
     xmb::assets::XmbThemeConfig theme;
     xmb::sim::RibbonSim ribbon;
     xmb::sim::ParticleSim particles(xmb::sim::ParticleSim::kDefaultCapacity);
@@ -769,92 +893,30 @@ int main(int argc, char** argv) {
     bool live_clock = !(custom_month || custom_day_time);
 
     auto reload_luts = [&]() {
-        const int m1 = std::clamp(month, 1, 12);
-        const int m2 = (m1 % 12) + 1;
-        if (playlist[cur] == "procedural") {
-            renderer.upload_background_luts_rgba8(
-                xmb::gfx::generate_procedural_sky_lut(m1, false),
-                xmb::gfx::generate_procedural_sky_lut(m2, false),
-                xmb::gfx::generate_procedural_sky_lut(m1, true),
-                xmb::gfx::generate_procedural_sky_lut(m2, true),
-                &err);
-            return;
-        }
-        char b1[8], b2[8];
-        std::snprintf(b1, sizeof(b1), "%02d", m1);
-        std::snprintf(b2, sizeof(b2), "%02d", m2);
-        auto load = [&](const std::string& p, xmb::assets::DdsImage& out) {
-            return archive.has(p) && xmb::assets::load_dds_from_memory(archive.read(p), out, &err);
-        };
-        xmb::assets::DdsImage d1, d2, n1, n2;
-        if (load(std::string("textures/month_bg/rgb/") + b1 + ".dds", d1) &&
-            load(std::string("textures/month_bg/rgb/") + b2 + ".dds", d2) &&
-            load(std::string("textures/month_bg/night/") + b1 + ".dds", n1) &&
-            load(std::string("textures/month_bg/night/") + b2 + ".dds", n2)) {
-            renderer.upload_background_luts(d1, d2, n1, n2, &err);
-        } else {
-            std::cerr << "Warning: failed to load month_bg DDS LUTs (" << err << ")\n";
-        }
+        source.upload_sky_luts(renderer, month, &err);
     };
 
     auto reload_all = [&]() -> bool {
-        if (playlist[cur] == "procedural") {
-            overrides.clear();
-            override_idx = -2;
-            tod_rig = make_procedural_tod_rig();
-            theme = tod_rig.evaluate(day_time);
-            reload_luts();
-            renderer.upload_fresnel_lut(xmb::gfx::generate_fresnel_lut(), &err);
-            renderer.upload_iridescent_lut(xmb::gfx::generate_iridescent_lut(), &err);
-            ribbon.configure(theme.line1);
-            particles.configure(theme.particles);
-            return true;
-        }
-        xmb::assets::QrcArchive a;
-        if (!a.load_from_file(playlist[cur], &err)) {
+        ThemeSource next_source;
+        if (!next_source.load(playlist[cur], &err)) {
             std::cerr << "Failed to load " << playlist[cur] << ": " << err << "\n";
             return false;
         }
-        archive = std::move(a);
-        overrides = archive.list_overrides();
+        source = std::move(next_source);
+        overrides = source.list_overrides();
         if (initial_override_pending) {
             initial_override_pending = false;
             const auto it = std::find(overrides.begin(), overrides.end(), override_name);
             if (it != overrides.end()) override_idx = static_cast<int>(it - overrides.begin());
         }
         if (override_idx >= static_cast<int>(overrides.size())) override_idx = -2;
-        if (!tod_rig.load_from_qrc(archive, &err)) {
-            std::cerr << "Failed to parse time-of-day overrides: " << err << "\n";
+        const std::string ov = (override_idx >= 0) ? overrides[override_idx] : std::string();
+        if (!source.resolve_config(override_idx == -2, ov, day_time, theme, &err)) {
+            std::cerr << "Failed to parse theme: " << err << "\n";
             return false;
         }
-        if (override_idx == -2) {
-            theme = tod_rig.evaluate(day_time);
-        } else {
-            const std::string ov = (override_idx >= 0) ? overrides[override_idx] : std::string();
-            xmb::assets::XmbThemeConfig t;
-            if (!xmb::assets::XmbThemeConfig::load_from_qrc(archive, t, ov, &err)) {
-                std::cerr << "Failed to parse theme: " << err << "\n";
-                return false;
-            }
-            theme = t;
-        }
         reload_luts();
-        if (archive.has("textures/TGA/freslut1.tga")) {
-            xmb::gfx::Rgba8Image img;
-            if (xmb::gfx::load_tga_rgba8(archive.read("textures/TGA/freslut1.tga"), img, &err)) {
-                renderer.upload_fresnel_lut(img, &err);
-            }
-        } else {
-            renderer.upload_fresnel_lut(xmb::gfx::generate_fresnel_lut(), &err);
-        }
-        if (archive.has("particles/proc_iridescent.tga")) {
-            xmb::gfx::Rgba8Image img;
-            if (xmb::gfx::load_tga_rgba8(archive.read("particles/proc_iridescent.tga"), img, &err)) {
-                renderer.upload_iridescent_lut(img, &err);
-            }
-        } else {
-            renderer.upload_iridescent_lut(xmb::gfx::generate_iridescent_lut(), &err);
-        }
+        source.upload_tga_luts(renderer, &err);
         ribbon.configure(theme.line1);
         particles.configure(theme.particles);
         return true;
@@ -1003,7 +1065,7 @@ int main(int argc, char** argv) {
             }
         }
         if (override_idx == -2) {
-            theme = tod_rig.evaluate(day_time);
+            theme = source.tod_rig.evaluate(day_time);
             ribbon.update_params(theme.line1);
             particles.update_params(theme.particles);
         }

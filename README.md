@@ -2,7 +2,7 @@
 
 A native **C++20 + Vulkan + SIMD (AVX2 / AVX-512) + SDL3 / Wayland `wlr-layer-shell`** recreation of the PlayStation 3 *moyou* (模様 — dynamic silk ribbon), bokeh particle field, seasonal sky, and 5-mip RGB Gaussian HDR glare engine.
 
-Works **out of the box** with a built-in 12-month procedural theme (zero proprietary files required), and can also load your own legally dumped `.qrc` wave archives from `~/.local/share/modern-moyou/`.
+Works **out of the box** with clean MIT-licensed `.json` theme presets (plus a built-in 12-month procedural fallback — zero proprietary files required), and can also load your own legally dumped `.qrc` wave archives from `~/.local/share/modern-moyou/`.
 
 ## Features
 - **True SPU-Faithful Simulation (`~0.09 ms/frame` CPU):**
@@ -47,23 +47,32 @@ Or as a translucent Wayland `wlr-layer-shell` background:
 modern-moyou --layer-shell --opacity 0.96
 ```
 
+### Open JSON Themes (`modern-moyou-theme/v1`)
+`modern-moyou` ships clean MIT-licensed JSON presets in `themes/` (installed to `/usr/share/modern-moyou/themes/`):
+- `classic-silk.json` — 12-month seasonal sky + silver-white silk ribbon + smooth day/night morphing
+- `midnight-obsidian.json` — deep obsidian sky + luminous silver silk ribbon
+- `deep-cobalt.json` — cobalt-blue sky + electric-blue iridescent particles
+
+Pass any `.json` theme or `.qrc` archive through the exact same interface:
+```bash
+modern-moyou --theme /usr/share/modern-moyou/themes/classic-silk.json
+modern-moyou --layer-shell --opacity 0.96 themes/deep-cobalt.json
+modern-moyou --procedural          # force built-in procedural theme
+```
+
 ### Using Your Own Legally Dumped `.qrc` Assets
 This repository contains **no proprietary Sony files** (no `.qrc`, `.rco`, `.prx`, or `SCE-PS3-*.TTF` fonts).
 
-If you own a PS3 and have legally dumped `lines.qrc` (or community `.qrc` waves), drop them into:
+If you own a PS3 and have legally dumped `lines.qrc` (or community `.qrc` waves), drop `.json` or `.qrc` files into:
 ```bash
 mkdir -p ~/.local/share/modern-moyou/qrc
 cp /path/to/your/lines.qrc ~/.local/share/modern-moyou/qrc/
 ```
-`modern-moyou` automatically discovers `.qrc` files in `~/.local/share/modern-moyou/` on startup, or you can pass an explicit file/directory:
-```bash
-modern-moyou --qrc /path/to/lines.qrc
-modern-moyou --procedural          # force built-in procedural theme
-```
+`modern-moyou` automatically discovers `.json` and `.qrc` files in `~/.local/share/modern-moyou/` (falling back to `/usr/share/modern-moyou/themes/` and then the built-in procedural theme).
 
 ### CLI Options
 ```text
-modern-moyou [--layer-shell] [--qrc <path> | --procedural]
+modern-moyou [--layer-shell] [--theme <path> | --qrc <path> | --procedural]
              [--month auto|<1-12>] [--month-day <1-30>]
              [--time auto|dawn|noon|dusk|night|<0-24>] [--day-time <0-2400>]
              [--override auto|base|<name>]
@@ -73,8 +82,8 @@ modern-moyou [--layer-shell] [--qrc <path> | --procedural]
 ### Windowed Controls
 | Key | Action |
 |---|---|
-| `Left` / `Right` | Previous / next `.qrc` ribbon |
-| `PgUp` / `PgDn` | Jump 10 ribbons |
+| `Left` / `Right` | Previous / next theme (`.json` / `.qrc`) |
+| `PgUp` / `PgDn` | Jump 10 themes |
 | `Up` / `Down` | Month +/- |
 | `,` / `.` | Time of day -/+ |
 | `T` | Toggle 24-hour time-lapse |
@@ -87,7 +96,7 @@ modern-moyou [--layer-shell] [--qrc <path> | --procedural]
 ### Live IPC Socket (`$XDG_RUNTIME_DIR/modern-moyou-wind.sock`)
 Send single-line datagrams while `modern-moyou` is running (works in both `--layer-shell` and windowed modes):
 - **Particle wind:** `left`, `right`, `up`, `down`, `shake`, `wind <nx> <ny> <vx> <vy>`
-- **Live preview:** `month auto|<1..12>`, `time auto|dawn|noon|dusk|night|<0..24>`, `opacity <0.05..1.0>`, `override auto|base|<name>`, `qrc <path>|procedural`
+- **Live preview:** `month auto|<1..12>`, `time auto|dawn|noon|dusk|night|<0..24>`, `opacity <0.05..1.0>`, `override auto|base|<name>`, `theme <path>|builtin|procedural` (alias: `qrc <path>|builtin|procedural`)
 
 ```bash
 printf 'right'     | socat - UNIX-SENDTO:"$XDG_RUNTIME_DIR/modern-moyou-wind.sock"
