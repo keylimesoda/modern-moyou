@@ -49,14 +49,12 @@ modern-moyou --layer-shell --opacity 0.96
 
 ### Open JSON Themes (`modern-moyou-theme/v1`)
 `modern-moyou` ships clean MIT-licensed JSON presets in `themes/` (installed to `/usr/share/modern-moyou/themes/`):
-- `classic-silk.json` — 12-month seasonal sky + silver-white silk ribbon + smooth day/night morphing
-- `midnight-obsidian.json` — deep obsidian sky + luminous silver silk ribbon
-- `deep-cobalt.json` — cobalt-blue sky + electric-blue iridescent particles
+- [`classic-silk.json`](themes/classic-silk.json) — 12-month seasonal sky + silver-white silk ribbon + smooth day/night morphing
+- [`aurora-sunset.json`](themes/aurora-sunset.json) — hue-shifting dawn/day/dusk/night sky + custom Fresnel curve + iridescent shimmer particles
+- [`midnight-obsidian.json`](themes/midnight-obsidian.json) — deep obsidian sky + luminous silver silk ribbon
+- [`deep-cobalt.json`](themes/deep-cobalt.json) — cobalt-blue sky + electric-blue iridescent particles
 
-JSON themes support every `BACKGROUND`/`LINE1`/`HDR`/`PARTICLES` parameter and named override, plus:
-- **`sky`**: multi-stop vertical gradients (`2+` hex/RGB stops) with optional `dawn` and `dusk` hue-shifting stops (either globally or per-month in `months[0..11]`).
-- **`line1.fresnel_curve`**: custom 1D Fresnel edge LUT as `{ "power", "bias", "scale", "invert" }` or an array of numeric stops.
-- **`particles.iridescent_gradient`** / **`particles.iridescent_tint`**: multi-stop 2D shimmer LUT or solid tint.
+See **[docs/THEME_FORMAT.md](docs/THEME_FORMAT.md)** for the complete `modern-moyou-theme/v1` specification (all 98 simulation/shader parameters, multi-stop `sky` LUTs, `line1.fresnel_curve`, `particles.iridescent_gradient`, and `overrides`).
 
 Pass any `.json` theme or `.qrc` archive through the exact same interface:
 ```bash

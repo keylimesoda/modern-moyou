@@ -251,6 +251,13 @@ int main() {
         CHECK(cobalt_irid.width == 16 && cobalt_irid.height == 16);
         CHECK(cobalt_irid.pixels[2] > cobalt_irid.pixels[0]); // blue channel > red channel
 
+        xmb::assets::JsonThemeBundle aurora;
+        CHECK(aurora.load_from_file(themes_dir / "aurora-sunset.json", &err));
+        CHECK(aurora.has_custom_sky);
+        CHECK(aurora.fresnel_curve.enabled);
+        CHECK(aurora.iridescent_gradient.size() == 3);
+        CHECK(aurora.list_overrides().size() == 3);
+
         xmb::assets::JsonThemeBundle bad;
         std::string parse_err;
         CHECK(!bad.load_from_string("{ invalid json", &parse_err));

@@ -1,0 +1,68 @@
+{
+  "schema": "modern-moyou-theme/v1",
+  "name": "Aurora Sunset",
+  "sky": {
+    "night": ["#050918", "#0c1833", "#152b4d"],
+    "dawn":  ["#1d1538", "#9c3b5b", "#f29b50"],
+    "day":   ["#0c2d6b", "#2a6cb8", "#7ec4e8"],
+    "dusk":  ["#191130", "#b83c4c", "#f07c3a"]
+  },
+  "background": {
+    "color1": [1.0, 0.98, 0.96],
+    "color2": [1.0, 0.98, 0.96],
+    "color3": [0.88, 0.85, 0.90],
+    "color4": [0.95, 0.92, 0.96],
+    "fovy": 71.846,
+    "night_blend": 0.45
+  },
+  "line1": {
+    "brightness": 0.78,
+    "fresnel": 0.62,
+    "spacing": 412.0,
+    "thinness": 1.0,
+    "mipmap_bias": 1.85,
+    "falloff": 0.95,
+    "timestep": 3.8,
+    "ang_rot": 18.0,
+    "ffd_param1": -1.35,
+    "ffd_shader": 1,
+    "fresnel_curve": {
+      "power": 2.8,
+      "bias": 0.02,
+      "scale": 0.98
+    }
+  },
+  "hdr": {
+    "enabled": 1,
+    "exposure": 1.08,
+    "white_level": 0.92,
+    "glare_level": 1.15,
+    "glare_thresh": 0.72,
+    "gaussian_rad": [1.30, 1.42, 1.58],
+    "glare_sum_pow": 0.56,
+    "glare": 1,
+    "tonebefore": 1
+  },
+  "particles": {
+    "emit_per_frame": 18.0,
+    "emit_prob": 0.52,
+    "global_alpha": 1.0,
+    "glare": 0.18,
+    "glare_scale": 5.5,
+    "iridescent_gradient": ["#ff6ad5", "#6ad8ff", "#ffe57f"]
+  },
+  "overrides": {
+    "yoake": {
+      "line1": { "brightness": 0.84, "fresnel": 0.58 },
+      "hdr":   { "exposure": 1.18, "glare_level": 1.22 }
+    },
+    "higure": {
+      "line1": { "brightness": 0.86, "fresnel": 0.56 },
+      "hdr":   { "exposure": 1.22, "glare_level": 1.25 }
+    },
+    "night": {
+      "line1": { "brightness": 0.92, "fresnel": 0.50, "falloff": 0.06, "ang_rot": 11.0, "ffd_param1": -1.80 },
+      "hdr":   { "exposure": 1.38, "white_level": 1.0, "glare_level": 1.32, "glare_thresh": 0.68 }
+    }
+  }
+}
