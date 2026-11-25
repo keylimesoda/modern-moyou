@@ -302,6 +302,10 @@ void apply_theme_patch(const JsonObject& root, XmbThemeConfig& cfg) {
         read_i(h, "glare_only", cfg.hdr.glare_only);
         read_i(h, "tonebefore", cfg.hdr.tonebefore);
         read_i(h, "blur", cfg.hdr.blur);
+        read_i(h, "tex_size", cfg.hdr.tex_size);
+        read_i(h, "tex_max_mip", cfg.hdr.tex_max_mip);
+        read_f(h, "gamma", cfg.hdr.gamma);
+        read_f(h, "dither", cfg.hdr.dither);
     }
     if (auto it = root.find("particles"); it != root.end() && it->second.is_object()) {
         const auto& p = *it->second.as_object();
@@ -321,6 +325,7 @@ void apply_theme_patch(const JsonObject& root, XmbThemeConfig& cfg) {
         read_f(p, "gravity", cfg.particles.gravity);
         read_v3(p, "wind_dir", cfg.particles.wind_dir);
         read_f(p, "wind_scale", cfg.particles.wind_scale);
+        read_f(p, "wind_scale_10", cfg.particles.wind_scale_10);
         read_f(p, "brownian_scale", cfg.particles.brownian_scale);
         read_v3(p, "spot_pos", cfg.particles.spot_pos);
         read_v3(p, "spot_attn", cfg.particles.spot_attn);
@@ -353,15 +358,69 @@ void apply_theme_patch(const JsonObject& root, XmbThemeConfig& cfg) {
     }
 }
 
-bool parse_gradient_pair(const JsonValue& v, std::array<float, 6>& out) {
-    if (auto* arr = v.as_array(); arr && arr->size() >= 2) {
-        std::array<float, 3> top{}, bot{};
-        if (parse_color3((*arr)[0], top) && parse_color3((*arr)[1], bot)) {
-            out = {top[0], top[1], top[2], bot[0], bot[1], bot[2]};
-            return true;
+bool parse_color_stops(const JsonValue& v, JsonThemeBundle::ColorStops& out) {
+    out.clear();
+    if (auto* arr = v.as_array(); arr && !arr->empty()) {
+        out.reserve(arr->size());
+        for (const auto& item : *arr) {
+            std::array<float, 3> c{};
+            if (!parse_color3(item, c)) return false;
+            out.push_back(c);
         }
+        return !out.empty();
+    }
+    std::array<float, 3> single{};
+    if (parse_color3(v, single)) {
+        out.push_back(single);
+        return true;
     }
     return false;
+}
+
+JsonThemeBundle::ColorStops scale_stops(const JsonThemeBundle::ColorStops& src, float factor) {
+    JsonThemeBundle::ColorStops out = src;
+    for (auto& c : out) {
+        c[0] *= factor;
+        c[1] *= factor;
+        c[2] *= factor;
+    }
+    return out;
+}
+
+std::array<float, 3> sample_stops(const JsonThemeBundle::ColorStops& stops, float t) {
+    if (stops.empty()) return {0.0f, 0.0f, 0.0f};
+    if (stops.size() == 1) return stops[0];
+    const float u = std::clamp(t, 0.0f, 1.0f) * static_cast<float>(stops.size() - 1);
+    const size_t i0 = std::min<size_t>(static_cast<size_t>(std::floor(u)), stops.size() - 2);
+    const float f = u - static_cast<float>(i0);
+    const auto& a = stops[i0];
+    const auto& b = stops[i0 + 1];
+    return {
+        a[0] + (b[0] - a[0]) * f,
+        a[1] + (b[1] - a[1]) * f,
+        a[2] + (b[2] - a[2]) * f,
+    };
+}
+
+float sample_scalar_stops(const std::vector<float>& stops, float t) {
+    if (stops.empty()) return 0.0f;
+    if (stops.size() == 1) return stops[0];
+    const float u = std::clamp(t, 0.0f, 1.0f) * static_cast<float>(stops.size() - 1);
+    const size_t i0 = std::min<size_t>(static_cast<size_t>(std::floor(u)), stops.size() - 2);
+    const float f = u - static_cast<float>(i0);
+    return stops[i0] + (stops[i0 + 1] - stops[i0]) * f;
+}
+
+bool parse_sky_month(const JsonObject& obj, JsonThemeBundle::SkyMonth& out) {
+    bool got_d = false, got_n = false;
+    if (auto it = obj.find("day"); it != obj.end()) got_d = parse_color_stops(it->second, out.day);
+    if (auto it = obj.find("night"); it != obj.end()) got_n = parse_color_stops(it->second, out.night);
+    if (auto it = obj.find("dawn"); it != obj.end()) parse_color_stops(it->second, out.dawn);
+    if (auto it = obj.find("dusk"); it != obj.end()) parse_color_stops(it->second, out.dusk);
+    if (!got_d && !got_n) return false;
+    if (!got_n) out.night = scale_stops(out.day, 0.22f);
+    if (!got_d) out.day = out.night;
+    return true;
 }
 
 uint8_t to_u8(float v) {
@@ -401,9 +460,38 @@ bool JsonThemeBundle::load_from_string(std::string_view json_text, std::string* 
     XmbThemeConfig base_cfg;
     apply_theme_patch(root, base_cfg);
 
-    // Optional iridescent tint under particles.iridescent_tint
+    // Optional custom 1D Fresnel edge LUT under line1.fresnel_curve
+    if (auto lit = root.find("line1"); lit != root.end() && lit->second.is_object()) {
+        const auto& lobj = *lit->second.as_object();
+        if (auto fit = lobj.find("fresnel_curve"); fit != lobj.end() && !fit->second.is_null()) {
+            if (auto* arr = fit->second.as_array(); arr && arr->size() >= 2) {
+                fresnel_curve.stops.clear();
+                fresnel_curve.stops.reserve(arr->size());
+                for (const auto& item : *arr) {
+                    if (item.is_number()) fresnel_curve.stops.push_back(static_cast<float>(item.as_double()));
+                }
+                if (fresnel_curve.stops.size() >= 2) fresnel_curve.enabled = true;
+            } else if (auto* obj = fit->second.as_object()) {
+                read_f(*obj, "power", fresnel_curve.power);
+                read_f(*obj, "bias", fresnel_curve.bias);
+                read_f(*obj, "scale", fresnel_curve.scale);
+                if (auto iit = obj->find("invert"); iit != obj->end() && iit->second.is_bool()) {
+                    fresnel_curve.invert = (iit->second.as_int(0) != 0);
+                }
+                fresnel_curve.enabled = true;
+            }
+        }
+    }
+
+    // Optional iridescent tint or multi-stop 2D shimmer gradient under particles
     if (auto pit = root.find("particles"); pit != root.end() && pit->second.is_object()) {
         const auto& pobj = *pit->second.as_object();
+        if (auto git = pobj.find("iridescent_gradient"); git != pobj.end() && !git->second.is_null()) {
+            ColorStops stops;
+            if (parse_color_stops(git->second, stops) && stops.size() >= 2) {
+                iridescent_gradient = std::move(stops);
+            }
+        }
         if (auto tit = pobj.find("iridescent_tint"); tit != pobj.end() && !tit->second.is_null()) {
             if (parse_color3(tit->second, iridescent_tint)) {
                 has_iridescent_tint = true;
@@ -411,7 +499,7 @@ bool JsonThemeBundle::load_from_string(std::string_view json_text, std::string* 
         }
     }
 
-    // Optional sky gradient palette (either single day/night pair or 12-month array)
+    // Optional sky gradient palette (single day/night/dawn/dusk or 12-month array, 2+ stops each)
     if (auto sit = root.find("sky"); sit != root.end() && sit->second.is_object()) {
         const auto& sobj = *sit->second.as_object();
         if (auto mit = sobj.find("months"); mit != sobj.end() && mit->second.is_array()) {
@@ -419,33 +507,21 @@ bool JsonThemeBundle::load_from_string(std::string_view json_text, std::string* 
             if (!marr.empty()) {
                 for (size_t i = 0; i < 12; ++i) {
                     const auto& entry = marr[i % marr.size()];
-                    if (auto* eo = entry.as_object()) {
-                        std::array<float, 6> d{0.1f, 0.2f, 0.45f, 0.25f, 0.45f, 0.78f};
-                        std::array<float, 6> n{0.02f, 0.04f, 0.10f, 0.06f, 0.12f, 0.24f};
-                        if (auto dit = eo->find("day"); dit != eo->end()) parse_gradient_pair(dit->second, d);
-                        if (auto nit = eo->find("night"); nit != eo->end()) {
-                            parse_gradient_pair(nit->second, n);
-                        } else {
-                            for (int k = 0; k < 6; ++k) n[k] = d[k] * 0.22f;
-                        }
-                        sky_day[i] = d;
-                        sky_night[i] = n;
+                    SkyMonth sm{};
+                    if (auto* eo = entry.as_object(); eo && parse_sky_month(*eo, sm)) {
+                        sky_months[i] = std::move(sm);
+                    } else {
+                        sm.day = {{0.1f, 0.2f, 0.45f}, {0.25f, 0.45f, 0.78f}};
+                        sm.night = {{0.02f, 0.04f, 0.10f}, {0.06f, 0.12f, 0.24f}};
+                        sky_months[i] = std::move(sm);
                     }
                 }
                 has_custom_sky = true;
             }
         } else {
-            std::array<float, 6> d{}, n{};
-            bool got_d = false, got_n = false;
-            if (auto dit = sobj.find("day"); dit != sobj.end()) got_d = parse_gradient_pair(dit->second, d);
-            if (auto nit = sobj.find("night"); nit != sobj.end()) got_n = parse_gradient_pair(nit->second, n);
-            if (got_d || got_n) {
-                if (!got_n) for (int k = 0; k < 6; ++k) n[k] = d[k] * 0.22f;
-                if (!got_d) d = n;
-                for (size_t i = 0; i < 12; ++i) {
-                    sky_day[i] = d;
-                    sky_night[i] = n;
-                }
+            SkyMonth sm{};
+            if (parse_sky_month(sobj, sm)) {
+                for (size_t i = 0; i < 12; ++i) sky_months[i] = sm;
                 has_custom_sky = true;
             }
         }
@@ -501,7 +577,10 @@ gfx::Rgba8Image JsonThemeBundle::build_sky_lut(int month, bool is_night) const {
         return gfx::generate_procedural_sky_lut(month, is_night);
     }
     const int m = std::clamp(month, 1, 12) - 1;
-    const auto& p = is_night ? sky_night[m] : sky_day[m];
+    const auto& sm = sky_months[m];
+    const bool has_diurnal_hues = !is_night && (!sm.dawn.empty() || !sm.dusk.empty());
+    const ColorStops& dawn_stops = sm.dawn.empty() ? sm.day : sm.dawn;
+    const ColorStops& dusk_stops = sm.dusk.empty() ? sm.day : sm.dusk;
 
     gfx::Rgba8Image img;
     img.width = 64;
@@ -509,25 +588,101 @@ gfx::Rgba8Image JsonThemeBundle::build_sky_lut(int month, bool is_night) const {
     img.pixels.resize(64u * 32u * 4u);
     for (uint32_t y = 0; y < img.height; ++y) {
         const float v = static_cast<float>(y) / static_cast<float>(img.height - 1);
+        const auto c_day   = sample_stops(sm.day, v);
+        const auto c_night = sample_stops(sm.night, v);
+        const auto c_dawn  = has_diurnal_hues ? sample_stops(dawn_stops, v) : c_day;
+        const auto c_dusk  = has_diurnal_hues ? sample_stops(dusk_stops, v) : c_day;
+
         for (uint32_t x = 0; x < img.width; ++x) {
             const float u = static_cast<float>(x) / static_cast<float>(img.width - 1);
-            const float diurnal = is_night
-                ? (0.80f + 0.20f * std::sin(u * 3.14159265f))
-                : (0.72f + 0.28f * std::sin(u * 3.14159265f));
-            const float r = (p[0] * (1.0f - v) + p[3] * v) * diurnal;
-            const float g = (p[1] * (1.0f - v) + p[4] * v) * diurnal;
-            const float b = (p[2] * (1.0f - v) + p[5] * v) * diurnal;
+            std::array<float, 3> rgb{};
+            if (has_diurnal_hues) {
+                // Full 24h hue-shifting ramp along X: 0=night, 0.25=dawn, 0.5=day, 0.75=dusk, 1=night
+                auto mix3 = [](const std::array<float, 3>& a, const std::array<float, 3>& b, float t) {
+                    const float s = t * t * (3.0f - 2.0f * t);
+                    return std::array<float, 3>{
+                        a[0] + (b[0] - a[0]) * s,
+                        a[1] + (b[1] - a[1]) * s,
+                        a[2] + (b[2] - a[2]) * s,
+                    };
+                };
+                if (u < 0.25f) {
+                    rgb = mix3(c_night, c_dawn, u / 0.25f);
+                } else if (u < 0.50f) {
+                    rgb = mix3(c_dawn, c_day, (u - 0.25f) / 0.25f);
+                } else if (u < 0.75f) {
+                    rgb = mix3(c_day, c_dusk, (u - 0.50f) / 0.25f);
+                } else {
+                    rgb = mix3(c_dusk, c_night, (u - 0.75f) / 0.25f);
+                }
+            } else {
+                const auto& base = is_night ? c_night : c_day;
+                const float diurnal = is_night
+                    ? (0.80f + 0.20f * std::sin(u * 3.14159265f))
+                    : (0.72f + 0.28f * std::sin(u * 3.14159265f));
+                rgb = {base[0] * diurnal, base[1] * diurnal, base[2] * diurnal};
+            }
             const size_t idx = (static_cast<size_t>(y) * img.width + x) * 4u;
-            img.pixels[idx + 0] = to_u8(r);
-            img.pixels[idx + 1] = to_u8(g);
-            img.pixels[idx + 2] = to_u8(b);
+            img.pixels[idx + 0] = to_u8(rgb[0]);
+            img.pixels[idx + 1] = to_u8(rgb[1]);
+            img.pixels[idx + 2] = to_u8(rgb[2]);
             img.pixels[idx + 3] = 255;
         }
     }
     return img;
 }
 
+gfx::Rgba8Image JsonThemeBundle::build_fresnel_lut() const {
+    if (!fresnel_curve.enabled) {
+        return gfx::generate_fresnel_lut();
+    }
+    gfx::Rgba8Image img;
+    img.width = 512;
+    img.height = 1;
+    img.pixels.resize(512u * 4u);
+    for (uint32_t x = 0; x < img.width; ++x) {
+        const float u = static_cast<float>(x) / static_cast<float>(img.width - 1);
+        float r = 0.0f;
+        if (fresnel_curve.stops.size() >= 2) {
+            r = sample_scalar_stops(fresnel_curve.stops, u);
+        } else {
+            const float base = fresnel_curve.invert ? u : (1.0f - u);
+            r = std::pow(std::clamp(base, 0.0f, 1.0f), std::max(0.05f, fresnel_curve.power))
+                * fresnel_curve.scale + fresnel_curve.bias;
+        }
+        const float g = 0.25f + 0.75f * std::clamp(r, 0.0f, 1.0f);
+        const size_t idx = static_cast<size_t>(x) * 4u;
+        img.pixels[idx + 0] = to_u8(r);
+        img.pixels[idx + 1] = to_u8(g);
+        img.pixels[idx + 2] = 0;
+        img.pixels[idx + 3] = 255;
+    }
+    return img;
+}
+
 gfx::Rgba8Image JsonThemeBundle::build_iridescent_lut() const {
+    if (iridescent_gradient.size() >= 2) {
+        gfx::Rgba8Image img;
+        img.width = 128;
+        img.height = 128;
+        img.pixels.resize(128u * 128u * 4u);
+        for (uint32_t y = 0; y < img.height; ++y) {
+            const float ny = (static_cast<float>(y) / static_cast<float>(img.height - 1)) * 2.0f - 1.0f;
+            for (uint32_t x = 0; x < img.width; ++x) {
+                const float nx = (static_cast<float>(x) / static_cast<float>(img.width - 1)) * 2.0f - 1.0f;
+                const float rad = std::min(1.0f, std::sqrt(nx * nx + ny * ny));
+                const float ang = (std::atan2(ny, nx) + 3.14159265f) / 6.2831853f; // [0..1]
+                const float t = std::fmod(rad * 0.80f + ang * 0.20f, 1.0f);
+                const auto rgb = sample_stops(iridescent_gradient, t);
+                const size_t idx = (static_cast<size_t>(y) * img.width + x) * 4u;
+                img.pixels[idx + 0] = to_u8(rgb[0]);
+                img.pixels[idx + 1] = to_u8(rgb[1]);
+                img.pixels[idx + 2] = to_u8(rgb[2]);
+                img.pixels[idx + 3] = 255;
+            }
+        }
+        return img;
+    }
     if (!has_iridescent_tint) {
         return gfx::generate_iridescent_lut();
     }

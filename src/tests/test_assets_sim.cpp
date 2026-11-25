@@ -255,6 +255,50 @@ int main() {
         std::string parse_err;
         CHECK(!bad.load_from_string("{ invalid json", &parse_err));
         CHECK(!parse_err.empty());
+
+        // Rich LUT extensions: multi-stop sky with dawn/dusk hue shift, iridescent_gradient, fresnel_curve
+        xmb::assets::JsonThemeBundle rich;
+        const char* rich_json = R"({
+            "schema": "modern-moyou-theme/v1",
+            "name": "Sunset Prism",
+            "sky": {
+                "night": ["#050814", "#101830"],
+                "dawn":  ["#301840", "#d05040", "#ffaa40"],
+                "day":   ["#0a3080", "#3080d0", "#90d8ff"],
+                "dusk":  ["#281038", "#e04030", "#ff8020"]
+            },
+            "line1": {
+                "fresnel_curve": { "power": 4.0, "bias": 0.05, "scale": 0.95 }
+            },
+            "hdr": { "gamma": 2.4, "dither": 1.0 },
+            "particles": {
+                "wind_scale_10": 0.25,
+                "iridescent_gradient": ["#ff40c0", "#40d0ff", "#ffe040"]
+            }
+        })";
+        CHECK(rich.load_from_string(rich_json, &parse_err));
+        CHECK(rich.has_custom_sky);
+        CHECK(rich.fresnel_curve.enabled);
+        CHECK(rich.iridescent_gradient.size() == 3);
+        CHECK(std::abs(rich.tod_rig.base.hdr.gamma - 2.4f) < 1e-4f);
+        CHECK(std::abs(rich.tod_rig.base.particles.wind_scale_10 - 0.25f) < 1e-4f);
+
+        const auto sky_lut = rich.build_sky_lut(6, false);
+        CHECK(sky_lut.width == 64 && sky_lut.height == 32);
+        // At dawn (x=16, y=31 horizon) red should dominate blue; at noon (x=32, y=0 zenith) blue should dominate red
+        const size_t dawn_px = (31u * 64u + 16u) * 4u;
+        const size_t noon_px = (0u * 64u + 32u) * 4u;
+        CHECK(sky_lut.pixels[dawn_px + 0] > sky_lut.pixels[dawn_px + 2] + 80);
+        CHECK(sky_lut.pixels[noon_px + 2] > sky_lut.pixels[noon_px + 0] + 50);
+
+        const auto fres_lut = rich.build_fresnel_lut();
+        CHECK(fres_lut.width == 512 && fres_lut.height == 1);
+        CHECK(fres_lut.pixels[0] > 230 && fres_lut.pixels[511 * 4] < 30);
+
+        const auto irid_lut = rich.build_iridescent_lut();
+        CHECK(irid_lut.width == 128 && irid_lut.height == 128);
+        CHECK(irid_lut.pixels[0] != irid_lut.pixels[(64u * 128u + 64u) * 4u] ||
+              irid_lut.pixels[1] != irid_lut.pixels[(64u * 128u + 64u) * 4u + 1]);
     }
 
     if (g_failures == 0) {

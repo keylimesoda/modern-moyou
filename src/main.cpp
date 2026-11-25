@@ -497,6 +497,8 @@ struct ThemeSource {
             if (xmb::gfx::load_tga_rgba8(archive.read("textures/TGA/freslut1.tga"), img, out_error)) {
                 renderer.upload_fresnel_lut(img, out_error);
             }
+        } else if (kind == Kind::Json) {
+            renderer.upload_fresnel_lut(json_bundle.build_fresnel_lut(), out_error);
         } else {
             renderer.upload_fresnel_lut(xmb::gfx::generate_fresnel_lut(), out_error);
         }
